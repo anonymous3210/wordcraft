@@ -29,20 +29,29 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK and NDK packages
+      - name: Configure Android SDK and NDK
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install \
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT/cmdline-tools"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          SDKMANAGER_DIR="$(dirname "$SDKMANAGER")"
+          echo "$SDKMANAGER_DIR" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/build-tools/35.0.0" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/30.0.16248370" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$SDK_ROOT/ndk/30.0.16248370" >> "$GITHUB_ENV"
+          set +e
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1
+          set -e
+          "$SDKMANAGER" --install \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;30.0.16248370"
-          printf 'ANDROID_SDK_ROOT=%s\n' "$ANDROID_HOME" >> "$GITHUB_ENV"
-          printf 'ANDROID_NDK_HOME=%s/ndk/30.0.16248370\n' "$ANDROID_HOME" >> "$GITHUB_ENV"
-          printf 'NDK_HOME=%s/ndk/30.0.16248370\n' "$ANDROID_HOME" >> "$GITHUB_ENV"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
