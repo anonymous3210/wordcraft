@@ -21,12 +21,15 @@ eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit"] }
 egui = { workspace = true }
 winit = { version = "0.30", features = ["android-native-activity"] }
 android_logger = "0.15.1"
+jni = "0.22.4"
+serde_json = { workspace = true }
 log = { workspace = true }
 [package.metadata.android]
 package = "ai.storyteller.wordcraft"
 apk_name = "wordcraft"
 use_aapt2 = false
 manifest_override = "AndroidManifest.xml"
+java_sources = "src/main/java"
 build_targets = ["aarch64-linux-android"]
 include_cplusplus_shared = true
 [package.metadata.android.sdk]
@@ -34,10 +37,10 @@ min_sdk_version = 26
 target_sdk_version = 35
 
 [package.metadata.android.application]
-has_code = false
+has_code = true
 
 [[package.metadata.android.application.activity]]
-name = "android.app.NativeActivity"
+name = "ai.storyteller.wordcraft.WordCraftActivity"
 
 [[package.metadata.android.application.activity.meta_data]]
 name = "android.app.lib_name"

@@ -71,6 +71,14 @@ unset CARGO_APK_RELEASE_KEYSTORE CARGO_APK_RELEASE_KEYSTORE_PASSWORD
 
 O APK otimizado sai em `target/release/apk/wordcraft.apk`. O APK gerado pelo script padrão é de depuração e serve para instalação/teste; não o publique numa loja.
 
+## Arquivos no Android 11 e 12 (SAF)
+
+O app usa o seletor do sistema por meio do Storage Access Framework: `ACTION_OPEN_DOCUMENT` para abrir e `ACTION_CREATE_DOCUMENT` para salvar. A seleção entrega acesso somente aos documentos escolhidos; o app copia a leitura para seu diretório privado e grava alterações de volta na URI do provedor. O identificador SAF é persistido junto com a permissão URI persistível; se o provedor recusar essa permissão, a seleção falha em vez de guardar uma URI que deixaria de funcionar após reiniciar o app. Não são solicitadas permissões amplas como `MANAGE_EXTERNAL_STORAGE`, `READ_EXTERNAL_STORAGE` ou `WRITE_EXTERNAL_STORAGE`.
+
+O fluxo foi direcionado a Android 11/API 30 e Android 12/API 31. Como determina o SAF, o seletor não concede acesso às pastas `Android/data` ou `Android/obb`; esse app não tenta contornar essa restrição. Um erro do provedor durante a gravação pode deixar o arquivo remoto parcial; a cópia de trabalho privada é mantida, mas a atomicidade depende do provedor. [Documentação oficial do SAF](https://developer.android.com/training/data-storage/shared/documents-files) · [Mudanças de armazenamento no Android 11](https://developer.android.com/about/versions/11/privacy/storage).
+
+A subclasse Android é empacotada pelo [`cargo-apk2`](https://crates.io/crates/cargo-apk2); o bridge de arrays usa a API `JObjectArray::len`/`get_element` do [JNI 0.22.4](https://docs.rs/jni/0.22.4/jni/objects/struct.JObjectArray.html).
+
 ## Escopo atual
 
-A inicialização, o renderizador e a interface são nativos. Ainda não estão conectados o seletor Android de documentos nem os serviços de impressão e compartilhamento. A interface existente foi desenhada para ribbon de desktop, portanto a ergonomia precisa ser validada num aparelho. Esta integração compila e empacota, mas não foi testada em dispositivo físico.
+A inicialização, o renderizador, a interface e a seleção de documentos são nativos. O SAF cobre abrir, salvar, AutoSave, Salvar como, exportar PDF/PNG, salvar as páginas escolhidas como PDF e importar arquivos escolhidos, sem acesso geral ao armazenamento. Impressão em impressora física e compartilhamento ainda não estão conectados. A interface existente foi desenhada para ribbon de desktop; teclado virtual, composição/IME e ergonomia precisam ser validados num aparelho. O código e o crate foram verificados no host, mas o target Android não foi compilado para APK nem testado em dispositivo: falta o Android NDK neste ambiente.
