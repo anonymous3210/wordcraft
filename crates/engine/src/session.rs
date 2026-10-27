@@ -612,6 +612,9 @@ pub struct Session {
     /// The recovery worker every open document's copy is kept through (desktop hosts only).
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) recovery: Option<crate::recovery::Recovery>,
+    /// On hosts using recovery snapshots as AutoSave, gate snapshots by each document's preference.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) recovery_autosave_cache: bool,
     /// The active document's recovery copy.
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) recovery_slot: crate::recovery::Slot,
@@ -965,6 +968,8 @@ impl Session {
             password,
             #[cfg(not(target_arch = "wasm32"))]
             recovery: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            recovery_autosave_cache: false,
             #[cfg(not(target_arch = "wasm32"))]
             recovery_slot,
             column,
@@ -1758,6 +1763,8 @@ impl Session {
             password: _,
             #[cfg(not(target_arch = "wasm32"))]
                 recovery: _,
+            #[cfg(not(target_arch = "wasm32"))]
+                recovery_autosave_cache: _,
             #[cfg(not(target_arch = "wasm32"))]
                 recovery_slot: _,
             also_selected: _,

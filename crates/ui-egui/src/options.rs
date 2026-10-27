@@ -439,17 +439,28 @@ fn custom_dictionary(app: &mut WordApp, ui: &mut Ui) {
 
 fn save(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Save documents");
-    // The browser can't write to the user's files, so AutoSave can't be turned on there (#176).
-    let browser = app.autosave_block() == Some(crate::AutoSaveBlock::Browser);
-    let mut autosave = app.autosave && !browser;
-    let r = ui.add_enabled(!browser, egui::Checkbox::new(&mut autosave, tl!("AutoSave documents you have saved in WordCraft")));
-    if browser {
-        r.on_disabled_hover_text(crate::AutoSaveBlock::Browser.reason());
+    // Browsers cannot write to local files; Android keeps its AutoSave copy in app-private storage.
+    let block = app.autosave_block();
+    let browser = block == Some(crate::AutoSaveBlock::Browser);
+    let cache_mode = app.session.autosave_cache_mode();
+    let blocked = browser || (cache_mode && block.is_some());
+    let mut autosave = app.autosave && !blocked;
+    let label = if cache_mode { tl!("AutoSave to private recovery cache") } else { tl!("AutoSave documents you have saved in WordCraft") };
+    let r = ui.add_enabled(!blocked, egui::Checkbox::new(&mut autosave, label));
+    if blocked {
+        if let Some(block) = block {
+            r.on_disabled_hover_text(block.reason());
+        }
     } else if r.changed() {
         app.autosave = autosave;
         app.session.autosave = autosave;
     }
-    note(ui, "AutoSave writes your changes to the file a moment after you stop typing.");
+    let explanation = if cache_mode {
+        "AutoSave keeps a private recovery copy on this device. Use Save to write changes to the selected file."
+    } else {
+        "AutoSave writes your changes to the file a moment after you stop typing."
+    };
+    note(ui, explanation);
     ui.add_space(8.0);
     // The open document's `file.privacyOptions` (#1062): saved with it, honoured when it is saved.
     section(ui, "Privacy for this document");

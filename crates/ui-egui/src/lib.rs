@@ -2790,12 +2790,20 @@ impl WordApp {
         self.session.path.is_some() && self.session.path == self.autosave_path
     }
 
-    /// Why AutoSave can't cover the document, or `None` when it can: it writes only a file the
-    /// user saved to in this session, in a format that keeps everything, and never in the browser
-    /// (a page can't write to the user's files; saving there is a download, #176).
+    /// Why AutoSave can't cover the document, or `None` when it can. Android's private-cache mode
+    /// is independent of the document path; other hosts write only a file saved in this session.
     pub fn autosave_block(&self) -> Option<AutoSaveBlock> {
         if self.services.download.is_some() {
             return Some(AutoSaveBlock::Browser);
+        }
+        if self.session.autosave_cache_mode() {
+            if !self.session.autosave_cache_available() {
+                return Some(AutoSaveBlock::CacheUnavailable);
+            }
+            if self.session.password.is_some() {
+                return Some(AutoSaveBlock::PasswordProtected);
+            }
+            return None;
         }
         let Some(path) = &self.session.path else { return Some(AutoSaveBlock::Unsaved) };
         if !keeps_everything(&path.to_string_lossy()) {
@@ -2814,8 +2822,8 @@ impl WordApp {
     }
 
     /// `file.autosave` (the AutoSave switch, and scripts): `value` turns AutoSave on or off;
-    /// without it, it toggles what the switch shows. Turning it on for a document AutoSave can't
-    /// cover is an error that says why, instead of a switch that is on but saves nothing (#196).
+    /// without it, it toggles what the switch shows. Turning it on when no destination is available
+    /// is an error that says why, instead of a switch that is on but saves nothing (#196).
     fn set_autosave(&mut self, params: &Value) -> Result<Value, String> {
         let on = params.get("value").and_then(Value::as_bool).unwrap_or(!self.autosaves());
         if on && let Some(block) = self.autosave_block() {
@@ -2826,9 +2834,13 @@ impl WordApp {
         Ok(json!({"value": on}))
     }
 
-    /// AutoSave: write a saved document a couple of seconds after the last change. A failure is
-    /// shown in the status bar and turns AutoSave off for the file until the user saves it again.
+    /// File-based AutoSave writes a saved document a couple of seconds after the last change.
+    /// Android's private-cache mode is driven by `Session::recovery_tick` instead and must never
+    /// send an implicit write to the selected SAF document.
     fn autosave_tick(&mut self, now: f64) {
+        if self.session.autosave_cache_mode() {
+            return;
+        }
         if self.autosaves() && self.session.dirty && now - self.last_autosave > 2500.0 && now - self.canvas.caret_visible_since > 1500.0 {
             self.last_autosave = now;
             let result = if self.services.host_save_at.is_some() {
@@ -3256,6 +3268,10 @@ impl WordApp {
 pub enum AutoSaveBlock {
     /// The web app: saving is a download, there is no file to keep writing to.
     Browser,
+    /// The host selected private-cache AutoSave but could not initialize its cache directory.
+    CacheUnavailable,
+    /// Recovery snapshots are deliberately not made for password-protected documents.
+    PasswordProtected,
     /// A new document that has never been saved.
     Unsaved,
     /// A file in a format that can't keep everything (Markdown, plain text, HTML…), by file name.
@@ -3271,6 +3287,10 @@ impl AutoSaveBlock {
             AutoSaveBlock::Browser => {
                 tl!("AutoSave isn't available in the browser: it can't write to your files. Save downloads a copy.").to_string()
             }
+            AutoSaveBlock::CacheUnavailable => tl!("AutoSave's private recovery cache isn't available on this device.").to_string(),
+            AutoSaveBlock::PasswordProtected => {
+                tl!("AutoSave cache is unavailable for password-protected documents because recovery copies are not encrypted.").to_string()
+            }
             AutoSaveBlock::Unsaved => tl!("Save the document to turn on AutoSave").to_string(),
             AutoSaveBlock::Format { name } => i18n::fmt(
                 tl!("AutoSave only keeps .docx, .odt and .rtf files; {name} can't keep all formatting. Save as .docx to turn on AutoSave."),
@@ -3284,7 +3304,7 @@ impl AutoSaveBlock {
 
     /// Whether Save As can lift the block (everywhere but the browser).
     pub fn save_as_helps(&self) -> bool {
-        !matches!(self, AutoSaveBlock::Browser)
+        !matches!(self, AutoSaveBlock::Browser | AutoSaveBlock::CacheUnavailable | AutoSaveBlock::PasswordProtected)
     }
 }
 
@@ -8328,6 +8348,34 @@ mod tests {
         assert_eq!(writes[1].0, "draft.docx");
         assert_eq!(writes[1].1, target);
         assert_ne!(writes[1].2, writes[0].2);
+    }
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn private_autosave_cache_never_writes_the_selected_saf_document() {
+        let dir = scratch("autosave-private-cache");
+        let writes: std::rc::Rc<std::cell::RefCell<Vec<(String, String, Vec<u8>)>>> = Default::default();
+        let sink = writes.clone();
+        let services = Services {
+            host_save_at: Some(Box::new(move |name, path, bytes, _| {
+                sink.borrow_mut().push((name.to_string(), path.to_string(), bytes.to_vec()));
+                Ok(())
+            })),
+            ..Default::default()
+        };
+        let mut session = Session::new(wordcraft_doc::Document::new());
+        session.enable_autosave_cache(dir.join("recovery"), std::sync::Arc::new(|| {})).unwrap();
+        let mut a = WordApp::new(session, services);
+        assert_eq!(a.autosave_block(), None, "private AutoSave is available before the first Save As");
+        a.run("text.insert", json!({"text": "Unsaved draft"})).unwrap();
+        a.autosave_tick(now_ms() + 10_000.0);
+
+        assert!(a.session.dirty, "the cache does not mark the external document as saved");
+        assert!(writes.borrow().is_empty(), "an AutoSave tick never calls the SAF writer");
+        assert!(a.autosaves());
+        assert_eq!(a.run("file.autosave", json!({"value": false})).unwrap()["value"], false);
+        a.session.finish_recovery();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

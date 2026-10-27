@@ -280,6 +280,8 @@ impl Session {
             untitled_count: _,
             #[cfg(not(target_arch = "wasm32"))]
                 recovery: _,
+            #[cfg(not(target_arch = "wasm32"))]
+                recovery_autosave_cache: _,
         } = self;
         let DocState {
             doc,
@@ -482,17 +484,18 @@ impl Session {
     /// document's slot to update. Nothing is cloned or laid out.
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn recovery_docs(&mut self) -> impl Iterator<Item = crate::recovery::DocRecovery<'_>> {
+        let cache_follows_autosave = self.recovery_autosave_cache;
         let active = crate::recovery::DocRecovery {
             id: self.document_id,
-            wants_copy: self.dirty && self.password.is_none(),
+            wants_copy: self.dirty && self.password.is_none() && (!cache_follows_autosave || self.autosave),
             rev: self.rev,
             doc: &self.doc,
             path: self.path.as_deref(),
             slot: &mut self.recovery_slot,
         };
-        std::iter::once(active).chain(self.others.iter_mut().map(|d| crate::recovery::DocRecovery {
+        std::iter::once(active).chain(self.others.iter_mut().map(move |d| crate::recovery::DocRecovery {
             id: d.document_id,
-            wants_copy: d.dirty && d.password.is_none(),
+            wants_copy: d.dirty && d.password.is_none() && (!cache_follows_autosave || d.autosave),
             rev: d.rev,
             doc: &d.doc,
             path: d.path.as_deref(),
@@ -504,8 +507,10 @@ impl Session {
     /// its revision.
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn recovery_slots(&self) -> impl Iterator<Item = (bool, u64, &crate::recovery::Slot)> {
-        std::iter::once((self.dirty && self.password.is_none(), self.rev, &self.recovery_slot))
-            .chain(self.others.iter().map(|d| (d.dirty && d.password.is_none(), d.rev, &d.recovery_slot)))
+        let cache_follows_autosave = self.recovery_autosave_cache;
+        std::iter::once((self.dirty && self.password.is_none() && (!cache_follows_autosave || self.autosave), self.rev, &self.recovery_slot)).chain(
+            self.others.iter().map(move |d| (d.dirty && d.password.is_none() && (!cache_follows_autosave || d.autosave), d.rev, &d.recovery_slot)),
+        )
     }
 
     /// Close document `id` without asking: its unsaved changes are lost (callers ask first),

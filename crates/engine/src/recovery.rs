@@ -26,6 +26,35 @@ impl Session {
         self.recovery = Some(Recovery::start(root, wake)?);
         Ok(())
     }
+    /// Enable private recovery snapshots as this host's AutoSave cache. Unlike desktop recovery,
+    /// the snapshots follow each document's AutoSave preference and never write its SAF target.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn enable_autosave_cache(&mut self, root: std::path::PathBuf, wake: std::sync::Arc<dyn Fn() + Send + Sync>) -> Result<(), String> {
+        self.recovery_autosave_cache = true;
+        self.enable_recovery(root, wake)
+    }
+    /// Whether this host uses private recovery snapshots for the AutoSave switch.
+    pub fn autosave_cache_mode(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.recovery_autosave_cache
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            false
+        }
+    }
+    /// Whether the private cache worker was successfully initialized.
+    pub fn autosave_cache_available(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.recovery_autosave_cache && self.recovery.is_some()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            false
+        }
+    }
     /// Copies left by an earlier run (or another window's documents that have closed), newest
     /// first. The copies this session's open documents keep are not listed: they are not lost.
     pub fn recovery_documents(&self) -> Vec<RecoveryInfo> {

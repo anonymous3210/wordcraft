@@ -789,6 +789,23 @@ mod tests {
         settle(&mut s);
         s
     }
+    #[test]
+    fn autosave_cache_follows_the_document_toggle() {
+        let profile = Temp::new();
+        let mut s = Session::new(Document::new());
+        s.enable_autosave_cache(profile.0.clone(), Arc::new(|| {})).unwrap();
+        settle(&mut s);
+        s.run("document.setText", &json!({"text": "Private recovery draft"})).unwrap();
+        assert!(s.autosave_cache_mode() && s.autosave_cache_available());
+        assert!(s.recovery_docs().next().unwrap().wants_copy, "AutoSave on includes dirty work in the private cache");
+        save_now(&mut s);
+        assert_eq!(records(&profile.0).len(), 1, "the cache snapshot is persisted in the private store");
+
+        s.autosave = false;
+        s.recovery_tick();
+        settle(&mut s);
+        assert!(records(&profile.0).is_empty(), "turning AutoSave off removes its private cache copy");
+    }
     /// Every open document's interval has passed.
     fn due_now(s: &mut Session) {
         for d in s.recovery_docs() {
