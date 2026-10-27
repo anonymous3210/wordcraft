@@ -32,6 +32,7 @@
   <br>
   <a href="https://sonarcloud.io/project/overview?id=storytold_wordcraft"><img alt="Scanned by SonarCloud" src="https://img.shields.io/badge/Scanned_by-SonarCloud-4b9fd5?style=flat-square&logo=sonarqubecloud&logoColor=white"></a>
   <a href="https://coderabbit.ai"><img alt="Reviewed by CodeRabbit" src="https://img.shields.io/coderabbit/prs/github/storytold/wordcraft?style=flat-square&label=Reviewed%20by%20CodeRabbit&logo=coderabbit"></a>
+  <a href="https://github.com/anonymous3210/wordcraft/actions/workflows/android-release.yml"><img alt="Android release workflow" src="https://github.com/anonymous3210/wordcraft/actions/workflows/android-release.yml/badge.svg?branch=main"></a>
 </p>
 
 <p align="center">
