@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 concurrency:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   android-release:
-    name: Build signed Android APK
+    name: Build and publish signed Android APK
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -67,7 +67,8 @@ jobs:
           test -s "$CARGO_APK_RELEASE_KEYSTORE"
           echo "CARGO_APK_RELEASE_KEYSTORE=$CARGO_APK_RELEASE_KEYSTORE" >> "$GITHUB_ENV"
 
-      - name: Build release APK
+      - name: Build and verify signed APK
+        id: build
         shell: bash
         env:
           CARGO_APK_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.WORDCRAFT_RELEASE_KEYSTORE_PASSWORD }}
@@ -78,7 +79,22 @@ jobs:
           APK=target/release/apk/wordcraft.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          sha256sum "$APK"
+          SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "APK SHA-256: $SHA256" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish public GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="wordcraft-android-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" \
+            target/release/apk/wordcraft.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "WordCraft Android Release #${GITHUB_RUN_NUMBER}" \
+            --notes "Signed APK built by GitHub Actions from commit ${GITHUB_SHA}.\nSHA-256: ${{ steps.build.outputs.sha256 }}"
 
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
