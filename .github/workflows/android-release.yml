@@ -61,29 +61,28 @@ jobs:
       - name: Install cargo-apk2
         run: cargo install cargo-apk2 --version 1.5.0 --locked
 
-      - name: Prepare signing keystore
+      - name: Configure release signing
         shell: bash
-        env:
-          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.WORDCRAFT_RELEASE_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          test -n "$ANDROID_RELEASE_KEYSTORE_BASE64" || { echo 'Missing WORDCRAFT_RELEASE_KEYSTORE_BASE64 secret' >&2; exit 1; }
-          mkdir -p "$RUNNER_TEMP/android-signing"
-          chmod 700 "$RUNNER_TEMP/android-signing"
-          export CARGO_APK_RELEASE_KEYSTORE="$RUNNER_TEMP/android-signing/wordcraft-release.jks"
-          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$CARGO_APK_RELEASE_KEYSTORE"
-          chmod 600 "$CARGO_APK_RELEASE_KEYSTORE"
-          test -s "$CARGO_APK_RELEASE_KEYSTORE"
-          echo "CARGO_APK_RELEASE_KEYSTORE=$CARGO_APK_RELEASE_KEYSTORE" >> "$GITHUB_ENV"
+          KEYSTORE="$GITHUB_WORKSPACE/apps/wordcraft-android/release-signing/wordcraft-release.jks"
+          PASSWORD_FILE="$GITHUB_WORKSPACE/apps/wordcraft-android/release-signing/wordcraft-release-password.txt"
+          test -s "$KEYSTORE"
+          test -s "$PASSWORD_FILE"
+          PASSWORD="$(tr -d '\r\n' < "$PASSWORD_FILE")"
+          test -n "$PASSWORD"
+          echo "::add-mask::$PASSWORD"
+          {
+            printf 'CARGO_APK_RELEASE_KEYSTORE=%s\n' "$KEYSTORE"
+            printf 'CARGO_APK_RELEASE_KEYSTORE_PASSWORD=%s\n' "$PASSWORD"
+          } >> "$GITHUB_ENV"
+          unset PASSWORD
 
       - name: Build and verify signed APK
         id: build
         shell: bash
-        env:
-          CARGO_APK_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.WORDCRAFT_RELEASE_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$CARGO_APK_RELEASE_KEYSTORE_PASSWORD" || { echo 'Missing WORDCRAFT_RELEASE_KEYSTORE_PASSWORD secret' >&2; exit 1; }
           cargo apk2 build --release --manifest-path apps/wordcraft-android/Cargo.toml
           APK=target/release/apk/wordcraft.apk
           test -s "$APK"
@@ -112,8 +111,3 @@ jobs:
           path: target/release/apk/wordcraft.apk
           if-no-files-found: error
           retention-days: 30
-
-      - name: Remove temporary signing key
-        if: always()
-        shell: bash
-        run: rm -f "$RUNNER_TEMP/android-signing/wordcraft-release.jks"
